@@ -1,0 +1,1037 @@
+Learning ROS2
+Wyatt Newman
+
+These notes describe a migration approach from ROS1 to ROS2, following the presentation given in
+"A Systematic Approach to Learning Robot Programming with ROS" (https://www.amazon.com/Systematic-Approach-Learning-Robot-Programming-ebook/dp/B075LYT9LG).  This presentation considers
+C++ only, although Python is also an option.
+
+the following are some useful sources:
+
+https://github.com/wsnewman/learning_ros_kinetic  wsn ROS1 examples that accompany the text
+https://github.com/wsnewman/learning_ros2         wsn ROS2 examples to compare to ROS1
+https://github.com/jstarkman/learning_ros2        also emulates ROS1 learning_ros examples
+https://github.com/ros2/examples/tree/master/rclcpp
+https://index.ros.org/doc/ros2/Tutorials/
+
+
+
+Introduction:
+
+A significant change in ROS2 from ROS1 is the underlying communications.  ROS1 used centralized
+"discovery" with the help of a ROS master node.  Custom communications means was written
+for ROS1 with TCPROS and UDPROS.  
+
+In ROS2, the underlying communications mechanism uses "DDS" (Data Distribution Service), which is an
+open standard middleware protocol and API that provides data connectivity.  DDS offers improvements
+in real-time behavior, quality of service and security.  In ROS2, the change to using DDS had
+many ripple effects, but these have been minimized such that code written for ROS2 is largely
+similar to code written for ROS1.  
+
+To begin, the following compares ROS1 to ROS2 with respect to the development steps of creating
+packages and nodes, compiling the source code, and running the compiled executable code.
+
+
+xxxxxxxxxxx  The ROS2 workspace: xxxxxxxxxxx
+
+As a starting point, it is assumed that you already have ROS2 installed.  If not, see 
+https://index.ros.org/doc/ros2/Installation/ for detailed instructions.  The current treatment is
+using ROS2 Eloquent and Ubuntu Linux 18.04.
+
+As with ROS1, you should have (or create) a ROS2 workspace.  If a relevant workspace already exists, 
+it can be re-used to add new packages. If the workspace does not yet exist, it can be created as follows.
+
+Create the workspace directory with a subdirectory called "src":    
+
+  mkdir -p ros2_ws/src 
+
+The chosen workspace name ros2_ws was arbitrary.  One may well maintain multiple workspaces with 
+different names (which can be convenient when working on multiple, separate projects).  
+
+For the workspace just created, which was named ros2_ws, initialize it by commanding:
+  cd ros2_ws
+  colcon build
+
+This operation will create new directories (siblings of "src") called "build", "install" and "log".  
+In contrast to ROS1, there is no "devel" directory.  
+
+The "colcon" command, which stands for "collective construction" is a very general compilation command
+meant to work across multiple languages and with alternative build tools.  In the present context,
+colcon will be used to build C++ code using the "ament" build tool.  Use of colcon will be revisted
+later, in the context of compiling new code.
+
+With the creation of the new workspace (using colcon), the "install" directory contains new setup
+files.  After every build, before executing new code, one must re-invoke 
+(from the workspace directory, e.g. ros2_ws):
+
+  source install/local_setup.bash
+
+This requirement is new (and annoying) with ROS2.  You may want to create an alias to
+help automate this frequent task.
+
+At this point, we have a viable ROS2 workspace, and it is ready to host new packages.
+
+xxxx   Creating a ROS2 package:  xxxxxxxxxx
+
+ROS source code lives in "packages."  Developers will re-use previously developed packages (of their
+own, or imported from shared code), as well as create new packages (which also may be shared and
+re-used).
+
+In ROS1, the command "catkin_create_pkg" is used to automate some of the tedium of creating new packages.
+Following the "minimal_nodes" example, this package is created by first navigating to the src 
+subdirectory of the ROS workspace and typing into a terminal the following command:
+ROS1:
+  catkin_create_pkg minimal_nodes roscpp std_msgs
+
+This command creates a package called "minimal_nodes" that depends on the libraries
+"roscpp" and "std_msgs".
+
+The corresponding command for ROS2 (assuming use of the workspace called "ros2_ws") is:
+ROS2:
+  cd ros2_ws/src
+  ros2 pkg create minimal_nodes --dependencies rclcpp std_msgs --build-type ament_cmake 
+
+The effect of the above ROS1 vs ROS2 commands is very similar.  Both of them create a package
+called "minimal_nodes", both of which depend on the library "std_msgs".  A difference is that
+ROS1 depends on the library "roscpp", whereas ROS2 depends on the library "rclcpp" 
+("ROS Client Library for C++").  The ROS2 package creation command requires the additional
+keyword "dependencies" before listing libraries used.  Additionally, the ROS2 package creation
+command requires specifying use of the "build type", "ament_cmake", which provides several 
+convenience functions to make it easier to write CMake-based packages.  
+
+For both the ROS1 "catkin_create_pkg" and ROS2 "ros2 pkg create" commands above, the result will be
+a new subdirectory of /src called "minimal_nodes".  This subdirectory will contain files
+"CMakeLists.txt" and the "manifest file" called "package.xml", as well as new subdirectories of
+"minimal_nodes" called "include" and "src".  
+
+xxxxxxxxxx  The Manifest File: package.xml  xxxxxxxxxxxxxxxx
+
+The manifest file "package.xml" of ROS2 is similar to that of ROS1.  
+The ROS1 version for minimal_nodes, as created by the above "catkin_create_pkg" command, is given below: 
+
+<?xml version="1.0"?>
+<package>
+  <name>minimal_nodes</name>
+  <version>0.0.0</version>
+  <description>The minimal_nodes package</description>
+
+  <maintainer email="wsn@case.edu">wyatt</maintainer>
+
+  <license>TODO</license>
+  <author email="wsn@case.edu">Wyatt Newman</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>std_msgs</run_depend>
+
+  <export>
+    <!-- Other tools can request additional information be placed here -->
+  </export>
+</package>
+
+The corresponding ROS2 version for minimal_nodes created by the "ros2 pkg create" command is given below: 
+
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>minimal_nodes</name>
+  <version>0.0.0</version>
+  <description>minimal_nodes demo code</description>
+  <maintainer email="wsn@case.edu">wsn</maintainer>
+  <license>TODO: License declaration</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
+
+The (important) differences, line by line, are:
+
+ROS1:  <buildtool_depend>catkin</buildtool_depend>
+
+ROS2:  <buildtool_depend>ament_cmake</buildtool_depend>
+
+ROS2 uses the ament "build system" in place of catkin.  ("ament" is a synonym of "catkin", 
+which is a type of cylindrical flower cluster).  The ament build system is an improvement and
+generalization over the catkin build system.
+
+Next, dependencies are declared. 
+ROS1:
+  <build_depend>roscpp</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>std_msgs</run_depend>
+
+ROS2:
+  <depend>rclcpp</depend>
+  <depend>std_msgs</depend>
+
+ROS2 uses a more recent version of the package format (e.g. version 2 or version3). 
+One simplification with the newer format versions is use of the <depend> tag. 
+This simplifies the duplicated lines for <build_depend> and <run_depend>.
+
+Note that ROS1 specified dependence on the library "roscpp".  ROS2 instead depends on the corresponding
+library "rclcpp".
+
+In ROS2, it is necessary to use the <export> field to specify building with ament and CMake as follows:
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+
+This field was populated by specifying "--build-type ament_cmake" in the "ros2 pkg create" command.
+
+
+xxxx  Writing a minimal ROS2 publisher xxxxxxxxxxxx
+
+A simple publisher was introduced in "A Systematic Approach to Learning Robot Programming with ROS", which is replicated below (minus some of the comments).
+
+#include <ros/ros.h>
+#include <std_msgs/Float64.h>
+
+int main(int argc, char **argv) {
+    ros::init(argc, argv, "sleepy_minimal_publisher"); // name of this node will be "minimal_publisher2"
+    ros::NodeHandle n; // two lines to create a publisher object that can talk to ROS
+    ros::Publisher my_publisher_object = n.advertise<std_msgs::Float64>("topic1", 1);
+
+    std_msgs::Float64 input_float; //create a variable of type "Float64", 
+   
+   ros::Rate naptime(1.0); //create a ros object from the ros “Rate” class; 
+   //set the sleep timer for 1Hz repetition rate (arg is in units of Hz)
+
+    input_float.data = 0.0;
+    
+    // do work here in infinite loop (desired for this example), but terminate if detect ROS has faulted
+    while (ros::ok()) 
+    {
+        input_float.data = input_float.data + 0.001; //increment by 0.001 each iteration
+        my_publisher_object.publish(input_float); // publish the value--of type Float64-- 
+	naptime.sleep(); 
+    }
+ return 0; //should return a value to be consistent with function type declaration
+}
+
+A corresponding ROS2 version is given below. This code was constructed to maximize similarity
+to the ROS1 version. In doing so, it has not utilized newer, preferred style changes, which will be
+introduced subsequently.
+
+//ros2_sleepy_minimal_publisher_v1.cpp
+#include <rclcpp/rclcpp.hpp> //replaces #include <ros/ros.h>
+#include <std_msgs/msg/float64.hpp> //replaces #include <std_msgs/Float64.h>; 
+
+int main(int argc, char **argv) {
+    rclcpp::init(argc, argv); 
+    rclcpp::Node node("sleepy_minimal_publisher"); 
+
+    auto  my_publisher_object_ptr = node.create_publisher<std_msgs::msg::Float64>("topic1",1);
+   
+    std_msgs::msg::Float64 input_float;
+   
+    rclcpp::Rate naptime(1.0);    
+
+    input_float.data = 0.0;
+    
+    while (rclcpp::ok()) {
+    
+        input_float.data = input_float.data + 0.001; //increment by 0.001 each iteration
+        my_publisher_object_ptr->publish(input_float);
+        naptime.sleep(); 
+    }
+    return 0;
+}
+
+
+The above two source files are compared line by line.
+ROS LIBRARY:
+#include <rclcpp/rclcpp.hpp> 
+this replaces: #include <ros/ros.h>.  
+
+These lines are conceptually similar, but ROS1 references the library "ros", whereas ROS2 references the
+ROS2 library, rclcpp.  Note that the suffix .hpp vs .h is essentially arbitrary in C++.  
+Stylistically, it is preferred to use .hpp to imply that this header is associated with a C++ file,
+but this is not enforced by the compiler.
+
+Another variation on the above is the use of:
+#include "rclcpp/rclcpp.hpp" instead of #include <rclcpp/rclcpp.hpp>.  The brackets <> tell the 
+compiler to look in standard directories (prescribed to the compiler), whereas use of " " specifies
+that the local (package) directory should be searched first.  Use of " " may be inappropriate
+for standard ROS2 libraries, as the developer might accidentally shadow these.
+
+
+ROS Standard Messages:
+In including message types, the ROS2 format differs from the ROS1 version as:
+  #include <std_msgs/msg/float64.hpp> (alternatively, in quotes "" instead of <> brackets)
+ vs. 
+  #include <std_msgs/Float64.h> 
+
+Relative to ROS1, the ROS2 version of standard messages requires additional drill-down to the subdirectory "msg".
+Further, the ROS2 version does NOT capitalize "float64", and it refers to the header file as
+".hpp" instead of ".h".  These are attributes also common to ROS2 use of alternative messages,
+service messages, and action messages, as will be seen.
+
+In the author's installation of ROS2/Eloquent, the std_msg header files are located here:
+/opt/ros/eloquent/include/std_msgs/msg/
+Within this directory, both *.h and *.hpp header files exist (but it is not clear if they are
+interchangeable).
+
+Additional #includes:
+
+In ROS2, it will be common to include two other headers by habit:
+#include <chrono>  
+#include <memory>
+These will enable use of more timer and memory options (although these were not required in the
+present minimal publisher example).
+
+Main program:
+int main(int argc, char **argv) might optionally be written as:
+int main(int argc, char * argv[])
+These are equivalent.
+
+
+xxxx Initialization:
+ROS1:
+ ros::init(argc, argv, "sleepy_minimal_publisher");
+ROS2:
+ rclcpp::init(argc, argv); 
+
+The difference here (besides use of the ros library vs rclcpp library) is that a node name is not
+specified in the initialization call.  This is because of a new feature in ROS2.  In ROS1, a *.cpp
+file would describe a single node.  In ROS2, multiple nodes may be defined within the same C++ file.
+Thus, node naming is deferred until creation of the nodes.
+
+xxxx Nodes vs NodeHandles:
+ROS1:
+  ros::NodeHandle n;
+ROS2:
+  rclcpp::Node node("sleepy_minimal_publisher"); 
+
+In ROS2, a node handle is not used.  Rather, a node is created, and this node has the methods
+formerly accessed via a ROS1 nodeHandle.  A node name is associated with a node as the
+node is created.  
+
+xxxx Creating a publisher object:
+ROS1:
+  ros::Publisher my_publisher_object = n.advertise<std_msgs::Float64>("topic1", 1);
+ROS2:
+  auto  my_publisher_object_ptr = node.create_publisher<std_msgs::msg::Float64>("topic1",1);
+
+In ROS1, a publisher object is instantiated via the nodeHandle method "advertise". In ROS2, 
+a (shared) pointer to a publisher object is created by a method of the "node" object.  The message
+type of the publisher is templated in both cases, although the ROS2 message type requires
+the additional subdirectory "/msg".  In both cases "Float64" is capitalized (in constrast to
+the #include files).
+
+The datatype of my_publisher_object_ptr is: rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr.
+The use of "auto" (in C++ 11 and above) simplifies declaring this datatype.  Additionally,
+C++11 (and above) uses "smart" pointers (including std::shared_ptr).  Smart pointers help 
+simplify memory management, helping to avoid memory leaks, by recognizing when they are no
+longer in use and invoking a corresponding destructor to return allocated memory.  ROS2 makes
+extensive use of shared pointers.
+
+Since "my_publisher_object_ptr" is a pointer to an object, its methods must by accessed using
+the "->" operator instead of the "." operator.
+
+xxx Instantiating message objects:
+ROS1: 
+ std_msgs::Float64 input_float; //create a variable of type "Float64"
+ROS2:
+ std_msgs::msg::Float64 input_float;
+
+In both cases, a message of type Float64 is instantiated.  The ROS2 instantiation requires
+the additional diretory depth to specify /msg. In ROS1 and ROS2, messages are populated identically, 
+e.g.: input_float.data = 0.0;
+
+xxx Instantiating a rate timer:
+ROS1:
+  ros::Rate naptime(1.0); //create a ros object from the ros “Rate” class; 
+ROS2:
+  rclcpp::Rate naptime(1.0);
+
+This is nearly identical, except for reference to the rclcpp library in place of the ros library.
+However, ROS2 has multiple additional timer options.  E.g.    
+   rclcpp::WallRate loop_rate(500ms);
+See https://design.ros2.org/articles/clock_and_time.html for detail.
+
+
+xxx  while loops and ROS status:
+ROS1:
+ while (ros::ok()) 
+ROS2:
+ while (rclcpp::ok()) 
+
+These are equivalent, except for the library references (rclcpp vs ros).
+
+xxx  publishing:
+ROS1:
+  my_publisher_object.publish(input_float); //publish the value contained in "input_float" to topic "topic1"
+ROS2:
+   my_publisher_object_ptr->publish(input_float); 
+
+The main difference here is that ROS2 uses a pointer to a publisher object, and thus the "->"
+reference to the "publish" message, instead of the "." operator used by a publisher object.
+
+xxx  Rate timers:
+ROS1 and ROS2 invoke the rate timer identically with a call to:
+  naptime.sleep();
+
+
+This concludes the line-by-line comparison of the minimal publisher for ROS1 vs ROS2.  For this simple
+15-line program, 9 of the 15 lines had to be altered to convert the ROS1 program to a ROS2 program.
+Even more changes are recommended (or necessary, to invoke more features) in the preferred
+style of ROS2 programs.  Using the ROS2 style, the minimal publisher code would appear as below.
+
+xxx  ROS2 with shared pointers: ros2_sleepy_minimal_publisher_v2.cpp
+
+#include <chrono>  //commonplace include files; 
+#include <memory>
+#include "rclcpp/rclcpp.hpp" 
+#include "std_msgs/msg/float64.hpp" 
+using namespace std::chrono_literals; //refer to names such as "ms"
+
+
+int main(int argc, char * argv[]){  //same as int main(int argc, char **argv)
+    rclcpp::init(argc, argv); 
+    auto node_ptr = rclcpp::Node::make_shared("sleepy_minimal_publisher_v2");
+    auto  my_publisher_object_ptr = node_ptr->create_publisher<std_msgs::msg::Float64>("topic1",1);
+     
+    std_msgs::msg::Float64 input_float;
+
+    rclcpp::WallRate naptime(1000ms);
+
+    input_float.data = 0.0;
+    
+    while (rclcpp::ok()) {
+    
+        input_float.data = input_float.data + 0.001; //increment by 0.001 each iteration
+        my_publisher_object_ptr->publish(input_float);
+        naptime.sleep(); 
+        rclcpp::spin_some(node_ptr);
+    }
+    rclcpp::shutdown();
+    return 0;
+}
+
+The new lines in the above are as follows.
+The headers #include <chrono> and #include <memory> are included to access commonly-used 
+ROS2 capabilities.  The declaration "using namespace std::chrono_literals;" enables use of
+common time literals, such as "ms" for "milli-seconds", as defined in the <chrono> header file.
+
+The lines:
+    auto node_ptr = rclcpp::Node::make_shared("sleepy_minimal_publisher_v2");
+    auto  my_publisher_object_ptr = node_ptr->create_publisher<std_msgs::msg::Float64>("topic1",1);
+
+contrast with:
+    rclcpp::Node node("sleepy_minimal_publisher"); 
+    auto  my_publisher_object_ptr = node.create_publisher<std_msgs::msg::Float64>("topic1",1);
+
+In version v2, a shared pointer to a node is created, instead of a node object.  This is
+not simply a matter of style.  Shared pointers are required as arguments of some essential ROS2 functions.
+
+The line:
+ROS2_v1:
+   rclcpp::Rate naptime(1.0); 
+
+contrasts with the corresponding line:
+ROS2_v2:
+  rclcpp::Rate naptime(1000ms);
+In the latter case, units are specified (ms) rather than inferred (seconds).  
+
+The v2 code contains the extra line in the main loop:
+   rclcpp::spin_some(node_ptr);
+
+"Spinning" is necessary to enable callback functions.  This is not needed in the current publisher
+code, but it illustrates how some ROS2 capabilities require access to a shared pointer to a node.
+(Spin options will be discussed further later).
+
+Finally, the v2 code contains the line:
+  rclcpp::shutdown();
+This line helps with clean-up, including returning allocated resources and informing the system
+that the nodes created in this program no longer exist.
+
+xxxxx  Minimal Publisher using Classes
+In a third version, wsn_ros2_sleepy_minimal_publisher_v3.cpp, a class is used to define and
+instantiate an object that contains a node, a publisher and a timer.  Differences are
+highlighted in the embedded comments.
+
+//v3 of minimal publisher example, ros2_sleepy_minimal_publisher_v3.cpp
+// based on https://github.com/ros2/examples/blob/master/rclcpp/minimal_publisher/member_function.cpp
+
+//typical headers
+#include <chrono>
+#include <memory>
+#include "rclcpp/rclcpp.hpp"
+//will again use std_msgs Float64
+#include "std_msgs/msg/float64.hpp"
+
+using namespace std::chrono_literals; //just so I can say "ms"
+
+/* This example creates a derived class based on the "Node" base class, and it will be
+   used to publish incremented values once per second*/
+class MinimalPublisher : public rclcpp::Node
+{
+private:
+  //member variables:
+  rclcpp::TimerBase::SharedPtr timer_;  //a pointer to a timer object
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr publisher_; // a pointer to a publisher object
+  std_msgs::msg::Float64 float_msg_ = std_msgs::msg::Float64(); //a message object to hold a double-precision value
+
+  //member methods:  
+  void timer_callback() //this function is to be called whenever an associated timer goes off
+  {
+    float_msg_.data += 0.001; //increment the value
+    publisher_->publish(float_msg_); //then publish it
+  }
+
+public:
+  MinimalPublisher()  //constructor
+ : Node("minimal_publisher")  //initializer list: creates a shared pointer to a Node object,
+                              // as defined in base class "Node"
+                              // and assigns the name "minimal_publisher" to this node via
+                              // the Node constructor
+  {
+    //instantiate a publisher and put a pointer to it in publisher_
+    // uses the base-class method create_publisher.
+    publisher_ = this->create_publisher<std_msgs::msg::Float64>("topic1", 1);
+    //create a timer object that will invoke timer_callback() every 1000ms
+    timer_ = this->create_wall_timer(
+      1000ms, std::bind(&MinimalPublisher::timer_callback, this));
+    //initialize the output value; alternatively, could have been done with initializer in constructor
+    float_msg_.data=0.0;
+  }
+};  //end of class definition for MinimalPublisher
+
+//main function, which instantiates and runs a MinimalPublisher object
+int main(int argc, char * argv[])  //generic
+{
+  rclcpp::init(argc, argv);   //generic: Initialize communications via the rmw implementation 
+                              //and set up a global signal handler.
+
+  //the following line instantiates a MinimalPublisher node and will continue "spinning" until
+  //this process is shut down
+  //"spin()" takes an argument of a shared pointer to a node
+  //void rclcpp::spin(rclcpp::node_interfaces::NodeBaseInterface::SharedPtr node_ptr)	
+  //Creates a default single-threaded executor and spins the specified node.
+  rclcpp::spin(std::make_shared<MinimalPublisher>());
+  rclcpp::shutdown(); //clean up before halting
+  return 0;
+}
+
+While defining and using a class for the minimal publisher is unnecessarily tedious in this case,
+use of classes associated with nodes will be convenient more generally. In ROS1, a source file
+would define and run a single associated node. The above code
+previews how ROS2 supports creation and spin-up of multiple nodes from a single *.cpp file.
+
+xxxx the CMakeLists.txt file
+
+The C++ source files must be compiled, and CMakeLists.txt describes how this is to be performed.
+A CMakeLists.txt file for ROS1 compilation of sleepy_minimal_publisher is shown below.
+
+cmake_minimum_required(VERSION 2.8.3)
+project(minimal_nodes)
+
+find_package(catkin REQUIRED COMPONENTS
+  roscpp
+  std_msgs
+)
+
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+)
+
+add_executable(sleepy_minimal_publisher src/sleepy_minimal_publisher.cpp)
+target_link_libraries(minimal_publisher  ${catkin_LIBRARIES} )
+
+
+A corresponding CMakeLists.txt file for compiling the three ROS2 publisher examples appears below:
+
+cmake_minimum_required(VERSION 3.5)
+project(minimal_nodes)
+
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+
+add_executable(ros2_sleepy_minimal_publisher_v1 src/ros2_sleepy_minimal_publisher_v1.cpp)
+ament_target_dependencies(ros2_sleepy_minimal_publisher_v1 rclcpp std_msgs)
+
+add_executable(ros2_sleepy_minimal_publisher_v2 src/ros2_sleepy_minimal_publisher_v2.cpp)
+ament_target_dependencies(ros2_sleepy_minimal_publisher_v2 rclcpp std_msgs)
+
+add_executable(ros2_sleepy_minimal_publisher_v3 src/ros2_sleepy_minimal_publisher_v3.cpp)
+ament_target_dependencies(ros2_sleepy_minimal_publisher_v3 rclcpp std_msgs)
+
+install(TARGETS
+  ros2_sleepy_minimal_publisher_v1
+  ros2_sleepy_minimal_publisher_v2
+  ros2_sleepy_minimal_publisher_v3
+  DESTINATION lib/${PROJECT_NAME}
+)
+ament_package()
+
+Line by line, these compare as follows.
+
+In both cases, a cmake version is specified and the project name "minimal_nodes" is specified.
+
+ROS2 uses C++14 by default, vs C++03 for ROS1.  In the ROS2 CMakeLists.txt example, 
+compiler options are set with -W to specify  the level of warnings that should be displayed
+during compilation.
+
+For both ROS1 and ROS2, dependencies are declared using find_package().  
+For ROS2, there is a dependency on "ament_cmake" instead of "catkin" used by ROS1. 
+Also, the "rclcpp" library is used for ROS2, instead of  "roscpp" for ROS1.
+
+The ROS2 version did not require the equivalent of include_directories(${catkin_INCLUDE_DIRS})
+
+Both versions require specifying source files to be compiled, e.g.
+add_executable(sleepy_minimal_publisher src/sleepy_minimal_publisher.cpp).
+
+Both versions require specifying how to link with libraries, with the following differences.
+For ROS1:
+  target_link_libraries(minimal_publisher  ${catkin_LIBRARIES} )
+For ROS2:
+  ament_target_dependencies(ros2_sleepy_minimal_publisher_v1 rclcpp std_msgs)
+
+For ROS2, it is necessary to specify installation of the target executables:
+install(TARGETS
+  ros2_sleepy_minimal_publisher_v1
+  ros2_sleepy_minimal_publisher_v2
+  ros2_sleepy_minimal_publisher_v3
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+In contrast, ROS1 would, by default, install versions in the "devel" directory (and specifying 
+"install" was optional).  The devel directory does not exist for ROS2.
+
+Finally, the ROS2 CMakeLists.txt concludes with "ament_package()", which does not have
+a ROS1 equivalent.
+
+
+xxx  CMakeLists.txt with ament_auto
+
+In ROS1, the "catkin_simple" package helped to simplify creation of CMakeLists.txt, which can
+get quite complex.  In ROS2, some simplification is achieved using "ament_auto" (although
+this is still relatively undocumented).  To use ament_auto, one should include in the
+package.xml file the line:
+    <buildtool_depend>ament_cmake_auto</buildtool_depend>
+
+An example CMakeListst.txt file follows, in this case compiling only one of the examples
+and choosing a shorter executable name, "test_pub":
+
+cmake_minimum_required(VERSION 3.5)
+project(minimal_nodes)
+
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+find_package(ament_cmake_auto REQUIRED)
+ament_auto_find_build_dependencies()
+
+# setup targets
+ament_auto_add_executable(pub_test src/ros2_sleepy_minimal_publisher_v1.cpp)
+
+ament_auto_package() 
+
+In this example, the same default version of C++ and same warning options are used.
+By finding the package "ament_cmake_auto", the remainder is simplified.
+
+Using "ament_auto_find_build_dependencies()" it is not necessary to list the dependencies.
+Instead, these are inferred from the package.xml file, and these dependencies are used
+for compiling and linking.  It is only necessary to specify which files should be compiled,
+using "ament_auto_add_executable(...)".  
+
+There is no corresponding "ament_target_dependencies(...)" 
+specification required.  It is also not necessary to specify "install(TARGETS ...)", since
+ament_auto installs libraries and executables in default locations.
+
+ament_auto performs additional tasks (not yet illustrated) that simplify CMakeLists.txt.
+If the package has an /include folder, these headers, are installed and exported.
+Ament_auto also automatically generates msg or srv interfaces, if msg or srv directories exist.
+
+xxx Compiling ROS2 code:
+As noted earlier, the compiler command for ROS2 is "colcon".  This requires a few steps.
+First, navigate to the workspace directory, e.g. 
+  cd ~/ros2_ws
+Then, invoke compilation with the command:
+  colcon build
+After building, it is necessary to re-run the local setup bash file:
+  source install/local_setup.bash
+
+The developer may find it convenient to combine these steps into an alias, e.g.:
+  alias ros2build='cd ~/ros2_ws; colcon build; source install/local_setup.bash'
+which may be appended to the .bashrc file, then invoked more succintly as:
+  ros2build
+
+colcon compilation can be slow.  At the time of this writing, colcon is not
+capable of performing compilation in parallel on multiple cores.  A couple of variations can
+speed up the process.  To compile only one package, one can use an option to select the package
+of interest.  E.g., to compile minimal_nodes and no other packages:
+  colcon build --packages-select minimal_nodes
+
+If changes were made to dependencies of some package, "pkg_name", these dependencies
+would need to be compiled as well, which can be expressed as:
+  colcon build --packages-up-to pkg_name
+
+Another option helps to speed up compilation somewhat by reducing the amount of file copying
+required through the use of symlinks.  This option is:
+  colcon build --symlink-install
+
+Since one may as well always use this option, it may be included in a convenience alias, such as 
+the above "ros2build" example.
+
+xxx  Running and testing ROS2 nodes
+
+A significant differences from ROS1 is that ROS2 does not use a roscore. There is no
+centralized mechanism for 
+
+
+After building with colcon, the executables are ready to be run.  In the present example, these
+are found in ~/ros2_ws/install/minimal_nodes/lib/minimal_nodes/(executable_name).  It will not
+be necessary to specify this long path, since ROS2 commands will find the executables based on
+the package name.  To run "ros2_sleepy_minimal_publisher_v1", type the following command in a terminal:
+  ros2 run minimal_nodes ros2_sleepy_minimal_publisher_v1
+
+This is an example of running a "ros2" command with options.  The option "run" starts a ROS2 program
+running, as specified by the package name ("minimal_nodes") and the executable name 
+("ros2_sleepy_minimal_publisher_v1").
+
+Running this command results in no output--not even a terminal prompt.  To recognize that the node
+is running, one can interrogate the system with more ros2 commands.  
+
+In a terminal, entering the command:
+  ros2 node list
+results in the response:
+  /minimal_publisher
+which shows that a single node, named "minimal_publisher", is running.  An equivalent response would
+be expected in ROS1 when invoking the command "rosnode list".
+
+Correspondingly, entering:
+  ros2 topic list
+is analogous to the ROS1 command "rostopic list", which shows that the topic "/topic1" exists.
+
+Entering:
+  ros2 topic info /topic1
+displays:
+  Type: std_msgs/msg/Float64
+  Publisher count: 1
+  Subscriber count: 0
+which shows that the message type used on /topic1 is a standard-messages floating point number, as 
+expected.  It also shows that there is a single publisher to this topic and there are no
+subscribers.
+
+Other ros2 options can be seen by simply entering "ros2".  Sub-command options can be seen by
+entering partial commands.  E.g.:
+  ros2 topic
+responds with 9 variations.  For example, running:
+  ros2 topic hz /topic1
+shows that messages on this topic are being published at 1Hz (with very low jitter).
+
+By commanding:
+  ros2 topic echo /topic1
+which is analogous to the ROS1 command "rostopic echo /topic1", one can see that the publisher
+node is publishing values at 1Hz that increment by 0.001.  This shows that
+our minimal_publisher node is running as expected.
+
+We can find out more about our minimal_publisher node by commanding:
+ ros2 node info /minimal_publisher
+which is equivalent to the ROS1 command "rosnode info /minimal_publisher"
+
+
+xxxx  A ROS2 Minimal Subscriber
+
+An example minimal subscriber for ROS1 is:
+
+#include<ros/ros.h> 
+#include<std_msgs/Float64.h> 
+void cbTopic1(const std_msgs::Float64& message_holder) 
+{ 
+  ROS_INFO("received value is: %f",message_holder.data); 
+} 
+
+int main(int argc, char **argv) 
+{ 
+  ros::init(argc,argv,"minimal_subscriber"); //name this node 
+
+  ros::NodeHandle n; // need this to establish communications with our new node 
+
+  ros::Subscriber my_subscriber_object= n.subscribe("topic1",1,cbTopic1); 
+
+  ros::spin(); 
+  return 0;  
+} 
+
+A corresponding version for ROS2 follows (ros2_minimal_publisher_v1.cpp)
+
+#include "rclcpp/rclcpp.hpp"
+#include <std_msgs/msg/float64.hpp>
+ 
+void cbTopic1(const std_msgs::msg::Float64::SharedPtr msg)
+{
+  printf("received value is: %f\n", msg->data);
+}
+
+int main(int argc, char **argv)
+{
+  rclcpp::init(argc, argv);
+  auto node = rclcpp::Node::make_shared("minimal_subscriber");
+
+  auto sub = node->create_subscription<std_msgs::msg::Float64>("topic1",1, cbTopic1);
+
+  rclcpp::spin(node);
+
+  return 0;
+}
+
+The differences, line by line, follow.
+
+As we have seen before, replace:
+  #include<ros/ros.h> 
+  #include<std_msgs/Float64.h> 
+with:
+  #include "rclcpp/rclcpp.hpp"  //optional "" vs <>
+  #include <std_msgs/msg/float64.hpp>
+
+The callback function has a different argument type.  ROS1:
+  void myCallback(const std_msgs::Float64& message_holder) 
+vs ROS2:
+  void cbTopic1(const std_msgs::msg::Float64::SharedPtr msg)
+
+The ROS1 logger function ROS_INFO() is different in ROS2, which is deferred for now by
+using "printf()" instead in this ROS2 example.
+
+In the main functions, we see again the different initialization, ROS1:
+  ros::init(argc,argv,"minimal_subscriber");
+vs ROS2:
+  rclcpp::init(argc, argv);
+
+ROS1 creates a nodeHandle:
+  ros::NodeHandle n;
+whereas ROS2 instantiates a node with a shared pointer, with node name as an argument:
+  auto node = rclcpp::Node::make_shared("minimal_subscriber");
+
+ROS1 instantiates a subscriber using the nodehandle:
+   ros::Subscriber my_subscriber_object= n.subscribe("topic1",1,myCallback); 
+while ROS2 uses a method of the node:
+   auto sub = node->create_subscription<std_msgs::msg::Float64>("topic1",1, cbTopic1);
+
+ROS1's main program goes into a blocking spin with:
+  ros::spin();
+the equivalent in ROS2 references the instantiated node:
+  rclcpp::spin(node);
+
+Although nearly every line of the minimal_subscriber had to be edited to create a ROS2 version,
+the ROS2 equivalents are very close.  However, the above ROS2 example does not use the
+newly recommended style with classes, nor does it use ROS logging for output.  The following
+example, minimal_subscriber_v2.cpp, shows a preferred variation, based on:
+https://github.com/ros2/examples/blob/master/rclcpp/minimal_subscriber/member_function.cpp
+
+//ros2_minimal_subscriber_v2.cpp, wsn
+
+#include <memory>
+
+#include "rclcpp/rclcpp.hpp"
+#include <std_msgs/msg/float64.hpp>
+using std::placeholders::_1;
+
+class MinimalSubscriber : public rclcpp::Node
+{
+private:
+  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr subscription_;
+  void topic_callback(const std_msgs::msg::Float64::SharedPtr msg) const
+  {
+    RCLCPP_INFO(this->get_logger(), "I heard: '%f'", msg->data);
+  }
+
+public:
+  MinimalSubscriber()
+  : Node("minimal_subscriber")
+  {
+    subscription_ = this->create_subscription<std_msgs::msg::Float64>(
+      "topic1", 1, std::bind(&MinimalSubscriber::topic_callback, this, _1));
+  }
+};
+
+int main(int argc, char * argv[])
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<MinimalSubscriber>());
+  rclcpp::shutdown();
+  return 0;
+}
+
+This version defines a class, MinimalSubscriber, derived from the base class "Node".
+It has a member variable "subscription_" of type rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr,
+which will get filled in by the constructor with a pointer to a subscriber.  
+
+The member method "topic_callback" is the function that will get invoked when new messages
+are received on topic1, as per the association established in the class constructor.
+
+An important difference is that the callback function uses RCLCPP_INFO(), which is analogous
+to the ROS1 ROS_INFO() function.  However, RCLCPP_INFO() requires an additional argument,
+"this->get_logger()", which references the current node.  This is necessary to associate
+the logger with the node name, so it is clear from the output or the logs which node
+is logging.  In addition, get_logger() will evaluate the logger level to decide whether
+or not to output (more on this later).
+
+The MinimalSubscriber class constructor sets the node's name to "minimal_subscriber".
+The constructor also affiliates the callback function with "topic1" via the line:
+  subscription_ = this->create_subscription<std_msgs::msg::Float64>(
+      "topic1", 1, std::bind(&MinimalSubscriber::topic_callback, this, _1));
+
+This somewhat opaque line is similar to the ROS1 version for classes:
+  minimal_subscriber_ = nh_.subscribe("example_class_input_topic", 1,   
+     &ExampleRosClass::subscriberCallback,this);   
+
+As with the previous minimal_publisher class example, the line:
+  rclcpp::spin(std::make_shared<MinimalSubscriber>());
+instantiates an object of MinimalSubsriber and starts it spinning.  Also as seen before,
+  rclcpp::shutdown();
+is responsible for helping to return resources when the node shuts down.
+
+The subscriber node can be started with the terminal command:
+  ros2 run minimal_nodes ros2_minimal_subscriber_v2
+With any version of the minimal_publisher running, example output from the subscriber looks like:
+
+[INFO] [minimal_subscriber]: I heard: '1.109000'
+[INFO] [minimal_subscriber]: I heard: '1.110000'
+[INFO] [minimal_subscriber]: I heard: '1.111000'
+
+In the above, the RCLCPP_INFO() function produces the output, which includes the logger level (INFO),
+the node name (minimal_subscriber), and the formatted message.  There are numerous variations
+on logging, as described here:
+http://docs.ros2.org/latest/api/rclcpp/logging_8hpp.html
+examples analogous to ROS_DEBUG, ROS_INFO, ROS_WARN are RCLCPP_DEBUG, RCLCPP_INFO and RCLCPP_WARN,
+each of which requires the get_logger() argument.
+
+The logging level can be set (among other ways) by specifying it with the ros2 run command.  E.g.
+  ros2 run minimal_nodes ros2_minimal_subscriber_v2 --ros-args --log-level DEBUG
+runs the minimal subscriber, but the output shows some rclcpp debug output in addition to
+the subscriber's output.
+
+Running:
+  ros2 run minimal_nodes ros2_minimal_subscriber_v2 --ros-args --log-level INFO
+displays the original output--INFO messages only.
+
+Running:
+  ros2 run minimal_nodes ros2_minimal_subscriber_v2 --ros-args --log-level WARN
+suppresses all of the output, since there are no warning-level messages.
+
+To illustrate these options, the ros2_minimal_subscriber_v2 callback function is modified
+to contain the following lines:
+    RCLCPP_DEBUG(this->get_logger(),"debug message from topic_callback()");
+    RCLCPP_INFO(this->get_logger(), "I heard: '%f'", msg->data);
+    if (msg->data>0.010) {
+      RCLCPP_WARN(this->get_logger(), "large-value warning: '%f'", msg->data);
+    }
+when run with:
+  ros2 run minimal_nodes ros2_minimal_subscriber_v2 --ros-args --log-level DEBUG
+
+A sample of the output looks like:
+[DEBUG] [minimal_subscriber]: debug message from topic_callback()
+[INFO] [minimal_subscriber]: I heard: '2.770000'
+[WARN] [minimal_subscriber]: large-value warning: '2.770000'
+[DEBUG] [rcl]: Waiting without timeout
+[DEBUG] [rcl]: Timeout calculated based on next scheduled timer: false
+[DEBUG] [rcl]: Guard condition in wait set is ready
+[DEBUG] [rcl]: Waiting without timeout
+[DEBUG] [rcl]: Timeout calculated based on next scheduled timer: false
+[DEBUG] [rcl]: Subscription in wait set is ready
+[DEBUG] [rcl]: Subscription taking message
+[DEBUG] [rcl]: Subscription take succeeded: true
+
+This shows DEBUG, INFO and WARN level messages are being displayed (and logged, with
+a record in ~/.ros/log/ros2_minimal_subscriber_v2_....log).
+
+In contrast, when run with the command:
+  ros2 run minimal_nodes ros2_minimal_subscriber_v2 --ros-args --log-level WARN
+
+sample output looks like:
+[WARN] [minimal_subscriber]: large-value warning: '3.161000'
+[WARN] [minimal_subscriber]: large-value warning: '3.162000'
+[WARN] [minimal_subscriber]: large-value warning: '3.163000'
+
+No DEBUG or INFO level values are displayed/logged.
+
+
+Note also that with the publisher and the subscriber both running, the command:
+ ros2 node list
+will display:
+/minimal_publisher
+/minimal_subscriber
+
+xxx ROS1 to ROS2 Bridge:
+
+Since there is substantial legacy code in ROS1, it is important to be able to run
+ROS2 and ROS1 nodes together.  To do this, there is a "bridge" capability. It can be installed 
+(assuming "eloquent" version of ROS2) with:
+
+sudo apt update
+sudo apt install ros-eloquent-ros1-bridge
+
+The bridge understands the built-in message types.  To extend this to custom message types
+requires recompiling the bridge, which can be found here:  https://github.com/ros2/ros1_bridge.
+This repository also describes use of the bridge in greater detail.
+
+For a quick illustration, one can do the following.
+
+From a ROS1 environment, start a roscore:
+ roscore
+From a ROS2 environment, start the bridge:
+ ros2 run ros1_bridge dynamic_bridge
+In either order, do the following:
+  
+From the ROS1 environment, start publishing.  The can be done via the command line, e.g.:
+  rostopic pub topic1 std_msgs/Float64 3.14 -r 1
+which will do a ROS1 publication of the value 3.14 on topic1 and repeat at 1Hz.
+
+From a ROS2 environment, start up a subscriber, e.g.:
+ ros2 run minimal_nodes ros2_minimal_subscriber_v2
+The result of this example is output like:
+[INFO] [minimal_subscriber]: I heard: '3.140000'
+[WARN] [minimal_subscriber]: large-value warning: '3.140000'
+[INFO] [minimal_subscriber]: I heard: '3.140000'
+[WARN] [minimal_subscriber]: large-value warning: '3.140000'
+
+which repeats at 1Hz.
+
+Publishers and subsribers can be switched between the ROS1 and ROS2 environments, and they
+will share each other's messages.
+
+
+
+
+
+xxxxxxxxxxxxxxxxx TODO xxxxxxxxx
+killing nodes:
+In ROS1,
+the command "rosnode kill -a" would kill all running nodes.  There is no equivalent command in ROS2.
+One can kill a "managed" ROS2 node with:
+  ros2 lifecycle set <nodename> shutdown
+
+continue extending the example code through the rest of "learning_ros"
+
+
+
+
+
