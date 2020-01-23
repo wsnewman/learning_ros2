@@ -1,0 +1,33 @@
+cmake_minimum_required(VERSION 3.5)
+project(minimal_nodes)
+
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+
+add_executable(wsn_ros2_sleepy_minimal_publisher_v1 src/wsn_ros2_sleepy_minimal_publisher_v1.cpp)
+ament_target_dependencies(wsn_ros2_sleepy_minimal_publisher_v1 rclcpp std_msgs)
+
+add_executable(wsn_ros2_sleepy_minimal_publisher_v2 src/wsn_ros2_sleepy_minimal_publisher_v2.cpp)
+ament_target_dependencies(wsn_ros2_sleepy_minimal_publisher_v2 rclcpp std_msgs)
+
+add_executable(wsn_ros2_sleepy_minimal_publisher_v3 src/wsn_ros2_sleepy_minimal_publisher_v3.cpp)
+ament_target_dependencies(wsn_ros2_sleepy_minimal_publisher_v3 rclcpp std_msgs)
+
+install(TARGETS
+  wsn_ros2_sleepy_minimal_publisher_v1
+  wsn_ros2_sleepy_minimal_publisher_v2
+  wsn_ros2_sleepy_minimal_publisher_v3
+  DESTINATION lib/${PROJECT_NAME}
+)
+ament_package()
